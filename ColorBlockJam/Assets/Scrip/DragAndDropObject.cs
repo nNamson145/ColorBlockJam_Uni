@@ -1,60 +1,83 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 using static UnityEditor.PlayerSettings;
 
 public class DragAndDropObject : MonoBehaviour
 {
-    Vector3 mousePosition;
+    private Vector3 mouseOffset;
+    private Camera cam;
+    private float yLock;
+    private float gridSize = 1f;
+    private Vector3 lastValidPosition; // Lưu vị trí hợp lệ gần nhất
 
-    private float ylock;
+    public LayerMask blockingLayer;
 
-    private float gridSize = 1;
-
-    // Start is called before the first frame update
     void Start()
     {
-        
+        cam = Camera.main;
+        lastValidPosition = transform.position; // Khởi tạo vị trí hợp lệ ban đầu
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
-
-    //chuyển object pos từ world sang screen
-    private Vector3 GetMousePos()
-    {
-        return Camera.main.WorldToScreenPoint(transform.position);
-    }
-
-    //Nhấn lưu vị trí chênh lệch giữa chuột và object vào mousePosition
     private void OnMouseDown()
     {
-        ylock = transform.position.y;
-        mousePosition = Input.mousePosition - GetMousePos();
+        Vector3 targetPos = OnSnapGrid(GetMouseWorldPos() - mouseOffset);
+
+        yLock = transform.position.y;
+        if (!IsBlocked(targetPos))
+        {
+            mouseOffset = GetMouseWorldPos() - transform.position;
+        }
+
     }
 
-    //Chuyển tọa độ chuột trên màn hình thành tọa độ thế giới và gán vào object pos
     private void OnMouseDrag()
     {
-        //Vector3 targetPos = Camera.main.ScreenToWorldPoint(Input.mousePosition - mousePosition);
-        
-        transform.position = OnSnapGrid();
+        Vector3 targetPos = OnSnapGrid(GetMouseWorldPos() - mouseOffset);
 
-        
+        // Nếu vị trí mới không bị vật cản thì cập nhật vị trí
+        if (!IsBlocked(targetPos))
+        {
+            transform.position = targetPos;
+            lastValidPosition = targetPos; // Cập nhật vị trí hợp lệ
+        }
+        else
+        {
+            transform.position = lastValidPosition; // Giữ nguyên vị trí hợp lệ trước đó
+        }
     }
 
-    private Vector3 OnSnapGrid()
+    private Vector3 GetMouseWorldPos()
     {
-        Vector3 targetPos = Camera.main.ScreenToWorldPoint(Input.mousePosition - mousePosition);
+        Vector3 mouseScreenPos = Input.mousePosition;
+        mouseScreenPos.z = cam.WorldToScreenPoint(transform.position).z;
+        return cam.ScreenToWorldPoint(mouseScreenPos);
+    }
 
-        targetPos.x = Mathf.Round(targetPos.x / gridSize) * gridSize;
-        targetPos.z = Mathf.Round(targetPos.z / gridSize) * gridSize;
+    private Vector3 OnSnapGrid(Vector3 position)
+    {
+        position.x = Mathf.Round(position.x / gridSize) * gridSize;
+        position.z = Mathf.Round(position.z / gridSize) * gridSize;
+        position.y = yLock; // Giữ nguyên trục Y
+        return position;
+    }
 
-        targetPos = new Vector3(targetPos.x, ylock, targetPos.z);
+    private bool IsBlocked(Vector3 targetPos)
+    {
+        // Giảm kích thước kiểm tra để tránh lỗi va chạm giả
+        Vector3 size = GetComponent<Collider>().bounds.extents * 0.9f;
 
-        return targetPos;
+        // Kiểm tra xem có Collider nào chặn vị trí mới không
+        Collider[] colliders = Physics.OverlapBox(targetPos, size, Quaternion.identity, blockingLayer);
+
+        return colliders.Length > 0;
+    }
+
+    private void OnDrawGizmos()
+    {
+        Gizmos.color = Color.red;
+        Vector3 size = GetComponent<Collider>().bounds.extents * 0.9f;
+        Gizmos.DrawWireCube(transform.position, size * 2);
     }
 }
